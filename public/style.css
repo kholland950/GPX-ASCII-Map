@@ -1,0 +1,254 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0a0e0a;
+  --surface:  #0f140f;
+  --green:    #39ff14;
+  --green-dim:#1a7a00;
+  --green-mid:#22aa00;
+  --amber:    #ffa500;
+  --muted:    #2a3a2a;
+  --border:   #1e3a1e;
+  --red:      #ff4040;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--green);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 0 16px;
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  padding: 18px 0 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px var(--green);
+}
+
+.tagline {
+  color: var(--green-dim);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+/* ── Main ────────────────────────────────────────────────────── */
+main {
+  flex: 1;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Drop Zone ───────────────────────────────────────────────── */
+#upload-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#drop-zone {
+  width: 100%;
+  max-width: 540px;
+  border: 2px dashed var(--green-dim);
+  border-radius: 4px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  outline: none;
+}
+
+#drop-zone:hover,
+#drop-zone:focus,
+#drop-zone.drag-over {
+  border-color: var(--green);
+  background: rgba(57, 255, 20, 0.04);
+}
+
+#drop-zone.drag-over {
+  background: rgba(57, 255, 20, 0.08);
+}
+
+.drop-icon {
+  font-size: 40px;
+  color: var(--green-dim);
+  margin-bottom: 16px;
+  text-shadow: 0 0 12px var(--green-dim);
+}
+
+.drop-text {
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: var(--green-mid);
+  margin-bottom: 6px;
+}
+
+.drop-sub {
+  font-size: 11px;
+  color: var(--green-dim);
+}
+
+.error-msg {
+  color: var(--red);
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+/* ── Loading ─────────────────────────────────────────────────── */
+#loading-section {
+  text-align: center;
+  padding: 60px 0;
+}
+
+.loading-text {
+  font-size: 16px;
+  color: var(--green-mid);
+  letter-spacing: 2px;
+}
+
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.blink { animation: blink 1s step-start infinite; }
+
+@keyframes ellipsis {
+  0%   { content: '.'; }
+  33%  { content: '..'; }
+  66%  { content: '...'; }
+}
+.ellipsis::after {
+  content: '';
+  animation: ellipsis 1.2s step-start infinite;
+}
+.ellipsis { font-size: 0; }
+.ellipsis::after { font-size: 16px; }
+
+/* ── Stats Bar ───────────────────────────────────────────────── */
+#stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 10px 0 16px;
+  font-size: 12px;
+  color: var(--green-mid);
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+#stats-bar span strong {
+  color: var(--green);
+}
+
+/* ── ASCII Map ───────────────────────────────────────────────── */
+.map-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  /* Thin scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--green-dim) var(--surface);
+}
+
+.map-wrapper::-webkit-scrollbar { height: 4px; }
+.map-wrapper::-webkit-scrollbar-track { background: var(--surface); }
+.map-wrapper::-webkit-scrollbar-thumb { background: var(--green-dim); }
+
+#ascii-output {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: pre;
+  color: var(--green);
+  text-shadow: 0 0 4px rgba(57, 255, 20, 0.35);
+  display: inline-block;
+  min-width: max-content;
+}
+
+/* Highlight the route characters */
+#ascii-output .route { color: var(--green); }
+#ascii-output .bg    { color: var(--green-dim); }
+
+/* ── Action Bar ──────────────────────────────────────────────── */
+.action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.btn {
+  background: none;
+  border: 1px solid var(--green-mid);
+  color: var(--green-mid);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  outline: none;
+}
+
+.btn:hover, .btn:focus {
+  border-color: var(--green);
+  color: var(--green);
+  text-shadow: 0 0 6px var(--green);
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.2);
+}
+
+.btn-dim {
+  border-color: var(--muted);
+  color: var(--green-dim);
+}
+
+.btn-dim:hover, .btn-dim:focus {
+  border-color: var(--green-mid);
+  color: var(--green-mid);
+  text-shadow: none;
+  box-shadow: none;
+}
+
+.feedback {
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 1px;
+  animation: fadeout 2.5s forwards;
+}
+
+@keyframes fadeout {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+footer {
+  padding: 16px 0;
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  color: var(--green-dim);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-align: center;
+}

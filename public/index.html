@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GPX ASCII Map</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <span class="logo">▶ GPX ASCII MAP</span>
+    <span class="tagline">render routes · share links</span>
+  </header>
+
+  <main>
+    <!-- Upload section -->
+    <section id="upload-section">
+      <div id="drop-zone" tabindex="0" role="button" aria-label="Upload GPX file">
+        <div class="drop-inner">
+          <div class="drop-icon">⬡</div>
+          <div class="drop-text">drop .gpx file here</div>
+          <div class="drop-sub">or click to browse</div>
+          <input type="file" id="file-input" accept=".gpx" hidden>
+        </div>
+      </div>
+      <div id="upload-error" class="error-msg" hidden></div>
+    </section>
+
+    <!-- Loading indicator -->
+    <section id="loading-section" hidden>
+      <div class="loading-text">
+        <span class="blink">▌</span> parsing route<span class="ellipsis">...</span>
+      </div>
+    </section>
+
+    <!-- Result section -->
+    <section id="result-section" hidden>
+      <div id="stats-bar"></div>
+
+      <div class="map-wrapper">
+        <pre id="ascii-output"></pre>
+      </div>
+
+      <div class="action-bar">
+        <button id="share-btn" class="btn">[ share link ]</button>
+        <button id="copy-art-btn" class="btn">[ copy ascii ]</button>
+        <button id="reset-btn" class="btn btn-dim">[ upload another ]</button>
+        <span id="share-feedback" class="feedback" hidden></span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>A: start · B: end · grid lines show lat/lon</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
