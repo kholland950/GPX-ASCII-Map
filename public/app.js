@@ -25,7 +25,7 @@
   }
 
   function showError(msg) {
-    uploadError.textContent = '✖ ' + msg;
+    uploadError.textContent = `✖ ${msg}`;
     uploadError.hidden = false;
   }
 
@@ -51,10 +51,14 @@
   function displayResult(data) {
     currentShareId = data.id;
     renderStats({ ...data.stats, pointCount: data.pointCount });
-    asciiOutput.textContent = data.ascii;
+    if (data.format === 'html') {
+      asciiOutput.innerHTML = data.ascii;
+    } else {
+      asciiOutput.textContent = data.ascii;
+    }
     showSection('result');
-    // Update URL without reloading
     history.replaceState({}, '', `?s=${data.id}`);
+    resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ── Upload ─────────────────────────────────────────────────────
@@ -82,7 +86,7 @@
       }
 
       displayResult(data);
-    } catch (err) {
+    } catch {
       showSection('upload');
       showError('Network error — is the server running?');
     }
@@ -136,7 +140,7 @@
   });
 
   function showFeedback(msg) {
-    shareFeedback.textContent = '✔ ' + msg;
+    shareFeedback.textContent = `✔ ${msg}`;
     shareFeedback.hidden = false;
     shareFeedback.style.animation = 'none';
     void shareFeedback.offsetWidth; // reflow to restart animation
