@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require("uuid");
 const path = require("node:path");
 const fs = require("node:fs");
 const Jimp = require("jimp");
+const { Storage } = require("@google-cloud/storage");
 
 const app = express();
 const upload = multer({
@@ -11,8 +12,13 @@ const upload = multer({
 	limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+// When GCS_BUCKET is set, persist route JSON to Cloud Storage.
+// Otherwise fall back to the local ./data directory (dev/local use).
+const GCS_BUCKET = process.env.GCS_BUCKET;
+const gcs = GCS_BUCKET ? new Storage().bucket(GCS_BUCKET) : null;
+
 const DATA_DIR = path.join(__dirname, "data");
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+if (!gcs && !fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
 app.use(express.static("public"));
 app.use(express.json());
@@ -809,10 +815,13 @@ app.post("/api/upload", upload.single("gpx"), async (req, res) => {
 			createdAt: new Date().toISOString(),
 		};
 
-		fs.writeFileSync(
-			path.join(DATA_DIR, `${id}.json`),
-			JSON.stringify(shareData),
-		);
+		if (gcs) {
+			await gcs.file(`${id}.json`).save(JSON.stringify(shareData), {
+				contentType: "application/json",
+			});
+		} else {
+			fs.writeFileSync(path.join(DATA_DIR, `${id}.json`), JSON.stringify(shareData));
+		}
 
 		res.json(shareData);
 	} catch (err) {
@@ -821,13 +830,23 @@ app.post("/api/upload", upload.single("gpx"), async (req, res) => {
 	}
 });
 
-app.get("/api/share/:id", (req, res) => {
+app.get("/api/share/:id", async (req, res) => {
 	const id = req.params.id.replace(/[^a-f0-9]/gi, "");
-	const filePath = path.join(DATA_DIR, `${id}.json`);
-	if (!fs.existsSync(filePath)) {
-		return res.status(404).json({ error: "Route not found." });
+	try {
+		if (gcs) {
+			const file = gcs.file(`${id}.json`);
+			const [exists] = await file.exists();
+			if (!exists) return res.status(404).json({ error: "Route not found." });
+			const [content] = await file.download();
+			return res.json(JSON.parse(content.toString()));
+		}
+		const filePath = path.join(DATA_DIR, `${id}.json`);
+		if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Route not found." });
+		res.json(JSON.parse(fs.readFileSync(filePath, "utf-8")));
+	} catch (err) {
+		console.error("Share lookup error:", err);
+		res.status(500).json({ error: "Failed to retrieve route." });
 	}
-	res.json(JSON.parse(fs.readFileSync(filePath, "utf-8")));
 });
 
 const PORT = process.env.PORT || 3000;
