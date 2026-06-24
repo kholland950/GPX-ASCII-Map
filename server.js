@@ -239,11 +239,14 @@ async function buildMapImage(minLat, minLon, maxLat, maxLon) {
 	const cropH = Math.max(1, cropY2 - cropY);
 	stitched.crop(cropX, cropY, cropW, cropH);
 
-	// Blur before classification to dissolve contour lines, road casings, and
-	// baked labels (all 1–3px wide) into surrounding terrain color.
+	// Clone before blurring: shadeImg keeps a lightly-blurred copy so per-cell
+	// luminance reflects the hillshading baked into OpenTopoMap tiles.
+	// classifyImg uses a heavy blur to dissolve contour lines and road casings.
+	const shadeImg = stitched.clone();
+	shadeImg.blur(1);
 	stitched.blur(4);
 
-	return stitched;
+	return { classifyImg: stitched, shadeImg };
 }
 
 // ── Pixel → ASCII ─────────────────────────────────────────────────────────────
@@ -251,20 +254,20 @@ async function buildMapImage(minLat, minLon, maxLat, maxLon) {
 // ASCII chars indexed by 4-bit water mask: bit3=TL bit2=TR bit1=BL bit0=BR
 const WATER_BLOCKS = [
 	null,
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
-	"=",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
+	"/",
 	null,
 ];
 
@@ -273,49 +276,39 @@ function isWater(r, g, b) {
 	return b > r + 25 && b > g + 8 && g > r;
 }
 
-// OpenTopoMap color → ASCII char + terrain type
-// Roads (white/warm-white surface + gray/orange casings) are intentionally
-// collapsed into land so they don't create noisy grid patterns at ASCII scale.
+// OpenTopoMap color → terrain type
+// Roads collapsed into land — they're too narrow to resolve at ASCII scale.
 function classifyPixel(r, g, b) {
-	if (isWater(r, g, b)) return ["=", "water"];
-
-	// Lush vegetation: g strongly leads r and b (forest, meadow, park)
-	if (g > r + 20 && g > b + 20) return ["=", "nature"];
-
-	// Lighter vegetation: g moderate lead (grassland, scrub)
-	if (g > r + 8 && g > b + 8 && g > 155) return ["=", "nature"];
-
+	if (isWater(r, g, b)) return "water";
+	if (g > r + 20 && g > b + 20) return "nature";
+	if (g > r + 8 && g > b + 8 && g > 155) return "nature";
 	const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-
-	// Alpine / rocky: neutral gray in mid-luminance range.
-	// Neutral = channels within ~12 of each other; excludes warm road casings.
 	const maxCh = Math.max(r, g, b);
 	const minCh = Math.min(r, g, b);
-	if (maxCh - minCh < 18 && lum > 120 && lum < 215) return ["=", "urban"];
-
-	// Everything else (arid land, roads, buildings, bare ground) → land
-	return ["=", "land"];
+	if (maxCh - minCh < 18 && lum > 120 && lum < 215) return "urban";
+	return "land";
 }
 
-function imageToASCII(img, MAP_W, MAP_H) {
-	const W = img.bitmap.width,
-		H = img.bitmap.height;
-	const data = img.bitmap.data;
+// Terrain shading — 5 levels from lit (0) to deep shadow (4), encoded as CSS
+// class "sN" on each span. Land and water use █ for visibility; nature/urban use =.
+
+
+function imageToASCII(classifyImg, shadeImg, MAP_W, MAP_H) {
+	const W = classifyImg.bitmap.width,
+		H = classifyImg.bitmap.height;
+	const data = classifyImg.bitmap.data;
+	const shadeData = shadeImg.bitmap.data;
 	const cellW = W / MAP_W,
 		cellH = H / MAP_H;
 
 	const grid = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(" "));
-	const typeGrid = Array.from({ length: MAP_H }, () =>
-		new Array(MAP_W).fill("bg"),
-	);
+	const typeGrid = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill("bg"));
+	const shadeGrid = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(2));
 
 	function avgColor(x0, y0, x1, y1) {
 		x1 = Math.min(x1, W - 1);
 		y1 = Math.min(y1, H - 1);
-		let r = 0,
-			g = 0,
-			b = 0,
-			n = 0;
+		let r = 0, g = 0, b = 0, n = 0;
 		for (let y = y0; y <= y1; y++) {
 			for (let x = x0; x <= x1; x++) {
 				const i = (y * W + x) * 4;
@@ -328,6 +321,31 @@ function imageToASCII(img, MAP_W, MAP_H) {
 		return n > 0 ? [r / n, g / n, b / n] : [245, 245, 245];
 	}
 
+	function avgLuma(x0, y0, x1, y1) {
+		x1 = Math.min(x1, W - 1);
+		y1 = Math.min(y1, H - 1);
+		let lum = 0, n = 0;
+		for (let y = y0; y <= y1; y++) {
+			for (let x = x0; x <= x1; x++) {
+				const i = (y * W + x) * 4;
+				lum += 0.299 * shadeData[i] + 0.587 * shadeData[i + 1] + 0.114 * shadeData[i + 2];
+				n++;
+			}
+		}
+		return n > 0 ? lum / n : 190;
+	}
+
+	// Pre-compute per-cell luminance so we can take horizontal gradients.
+	// The tiles have NW hillshading baked in; the E-W gradient isolates the
+	// component we need to re-light from the west.
+	const lumaGrid = Array.from({ length: MAP_H }, (_, row) =>
+		Array.from({ length: MAP_W }, (_, col) => {
+			const x0 = Math.floor(col * cellW), x1 = Math.floor((col + 1) * cellW);
+			const y0 = Math.floor(row * cellH), y1 = Math.floor((row + 1) * cellH);
+			return avgLuma(x0, y0, x1, y1);
+		}),
+	);
+
 	for (let row = 0; row < MAP_H; row++) {
 		for (let col = 0; col < MAP_W; col++) {
 			const x0 = Math.floor(col * cellW),
@@ -337,39 +355,42 @@ function imageToASCII(img, MAP_W, MAP_H) {
 			const mx = (x0 + x1) >> 1,
 				my = (y0 + y1) >> 1;
 
-			// Sample each quadrant to detect coastal transitions
 			const qTL = avgColor(x0, y0, mx, my);
 			const qTR = avgColor(mx + 1, y0, x1, my);
 			const qBL = avgColor(x0, my + 1, mx, y1);
 			const qBR = avgColor(mx + 1, my + 1, x1, y1);
 
-			const wTL = isWater(...qTL),
-				wTR = isWater(...qTR);
-			const wBL = isWater(...qBL),
-				wBR = isWater(...qBR);
+			const wTL = isWater(...qTL), wTR = isWater(...qTR);
+			const wBL = isWater(...qBL), wBR = isWater(...qBR);
 			const waterCount =
 				(wTL ? 1 : 0) + (wTR ? 1 : 0) + (wBL ? 1 : 0) + (wBR ? 1 : 0);
 
 			if (waterCount === 4) {
-				grid[row][col] = "=";
+				grid[row][col] = "/";
 				typeGrid[row][col] = "water";
 			} else if (waterCount >= 2) {
-				// Require at least half the cell to be water before marking it as
-				// water/coast — keeps rivers from bleeding into adjacent land cells.
 				const mask =
 					(wTL ? 8 : 0) | (wTR ? 4 : 0) | (wBL ? 2 : 0) | (wBR ? 1 : 0);
 				grid[row][col] = WATER_BLOCKS[mask];
 				typeGrid[row][col] = "water";
 			} else {
 				const [ar, ag, ab] = avgColor(x0, y0, x1, y1);
-				const [ch, type] = classifyPixel(ar, ag, ab);
-				grid[row][col] = ch;
+				const type = classifyPixel(ar, ag, ab);
+
+				// West light: wider central-difference (±2 cells) smooths noise from
+				// individual pixels. Divisor 30 means only steep slopes reach s0/s4.
+				const colR = Math.min(MAP_W - 1, col + 2);
+				const colL = Math.max(0, col - 2);
+				const dLdx = (lumaGrid[row][colR] - lumaGrid[row][colL]) / (colR - colL);
+				const level = Math.max(0, Math.min(4, Math.round(2 + dLdx / 20)));
+				grid[row][col] = "/";
 				typeGrid[row][col] = type;
+				shadeGrid[row][col] = level;
 			}
 		}
 	}
 
-	return { grid, typeGrid };
+	return { grid, typeGrid, shadeGrid };
 }
 
 // ── Place Names ───────────────────────────────────────────────────────────────
@@ -554,13 +575,12 @@ async function renderASCII(points, name) {
 	const lonRange = maxLon - minLon;
 
 	// Fetch tile image and place names in parallel
-	const [img, placeNames] = await Promise.all([
+	const [{ classifyImg, shadeImg }, placeNames] = await Promise.all([
 		buildMapImage(minLat, minLon, maxLat, maxLon),
 		fetchPlaceNames(minLat, minLon, maxLat, maxLon),
 	]);
 
-	// Convert tile image to ASCII grid
-	const { grid, typeGrid } = imageToASCII(img, MAP_W, MAP_H);
+	const { grid, typeGrid, shadeGrid } = imageToASCII(classifyImg, shadeImg, MAP_W, MAP_H);
 
 	// Grid coordinate helper
 	function toGrid(lat, lon) {
@@ -683,7 +703,7 @@ async function renderASCII(points, name) {
 
 	// ── HTML output ───────────────────────────────────────────────────────────
 
-	function rowToHtml(mapLine, typeRow, riRow, rvRow) {
+	function rowToHtml(mapLine, typeRow, shadeRow, riRow, rvRow) {
 		let html = "";
 		let i = 0;
 		while (i < mapLine.length) {
@@ -699,17 +719,13 @@ async function renderASCII(points, name) {
 				i++;
 				continue;
 			}
+			// Shaded terrain types group by both type and shade level
+			const s = (t === "nature" || t === "land" || t === "urban") ? shadeRow[i] : -1;
 			let j = i + 1;
-			while (j < mapLine.length && typeRow[j] === t) j++;
+			while (j < mapLine.length && typeRow[j] === t && ((t === "nature" || t === "land" || t === "urban") ? shadeRow[j] === s : true)) j++;
 			const chunk = escapeHtml(mapLine.slice(i, j));
-			if (t === "marker") html += `<span class="marker">${chunk}</span>`;
-			else if (t === "water") html += `<span class="water">${chunk}</span>`;
-			else if (t === "coast") html += `<span class="coast">${chunk}</span>`;
-			else if (t === "nature") html += `<span class="nature">${chunk}</span>`;
-			else if (t === "land") html += `<span class="land">${chunk}</span>`;
-			else if (t === "urban") html += `<span class="urban">${chunk}</span>`;
-			else if (t === "label") html += `<span class="label">${chunk}</span>`;
-			else html += `<span class="bg">${chunk}</span>`;
+			const cls = s >= 0 ? `${t} s${s}` : t;
+			html += `<span class="${cls}">${chunk}</span>`;
 			i = j;
 		}
 		return html;
@@ -722,7 +738,7 @@ async function renderASCII(points, name) {
 	const mapRows = [];
 	mapRows.push(bg(`+${"-".repeat(MAP_W)}+`));
 	for (let y = 0; y < MAP_H; y++) {
-		mapRows.push(bg("|") + rowToHtml(mapLines[y], typeGrid[y], riGrid[y], rvGrid[y]) + bg("|"));
+		mapRows.push(bg("|") + rowToHtml(mapLines[y], typeGrid[y], shadeGrid[y], riGrid[y], rvGrid[y]) + bg("|"));
 	}
 	mapRows.push(bg(`+${"-".repeat(MAP_W)}+`));
 

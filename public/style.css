@@ -285,11 +285,23 @@ main {
 
 #ascii-output .label  { color: #f5f5f5; letter-spacing: 0; }
 
-/* Terrain — three colors: green / beige / gray, plus blue for water */
-#ascii-output .water  { color: #5bc8f5; }
-#ascii-output .nature { color: #4a7a4a; }
-#ascii-output .land   { color: #c4a46b; }
-#ascii-output .urban  { color: #8a9a8a; }
+/* Terrain — color shading from west light (s0 = lit face, s2 = neutral, s4 = shadow) */
+#ascii-output .water          { color: #5bc8f5; }
+#ascii-output .nature.s0      { color: #72c272; }
+#ascii-output .nature.s1      { color: #5c9460; }
+#ascii-output .nature.s2      { color: #4a7a4a; }
+#ascii-output .nature.s3      { color: #38603a; }
+#ascii-output .nature.s4      { color: #264428; }
+#ascii-output .land.s0        { color: #dcbe80; }
+#ascii-output .land.s1        { color: #ccb074; }
+#ascii-output .land.s2        { color: #c4a46b; }
+#ascii-output .land.s3        { color: #a6844e; }
+#ascii-output .land.s4        { color: #846434; }
+#ascii-output .urban.s0       { color: #a8baa8; }
+#ascii-output .urban.s1       { color: #96a896; }
+#ascii-output .urban.s2       { color: #8a9a8a; }
+#ascii-output .urban.s3       { color: #6c7c6c; }
+#ascii-output .urban.s4       { color: #4e5e4e; }
 
 /* ── Action Bar ──────────────────────────────────────────────── */
 .action-bar {
