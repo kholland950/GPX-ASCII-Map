@@ -108,6 +108,41 @@ main {
   color: var(--green-dim);
 }
 
+.upload-privacy {
+  font-size: 10px;
+  opacity: 0.65;
+  letter-spacing: 0;
+  text-align: center;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+/* Compact state — while a result is shown below */
+#upload-section.compact #drop-zone {
+  padding: 10px 20px;
+  border-width: 1px;
+}
+#upload-section.compact .drop-icon,
+#upload-section.compact .drop-sub,
+#upload-section.compact .upload-privacy {
+  display: none;
+}
+#upload-section.compact .drop-text {
+  font-size: 11px;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
+#section-sep {
+  border: none;
+  border-top: 1px solid var(--border);
+  width: 100%;
+  max-width: 960px;
+  margin: 20px auto;
+}
+
 .error-msg {
   color: var(--red);
   margin-top: 16px;
@@ -368,13 +403,6 @@ footer {
   font-size: 11px;
   letter-spacing: 1px;
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
-.footer-privacy {
-  font-size: 10px;
-  opacity: 0.65;
-  letter-spacing: 0;
-}
+

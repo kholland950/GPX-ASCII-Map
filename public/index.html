@@ -9,11 +9,10 @@
 <body>
   <header>
     <span class="logo">▶ GPX ASCII MAP</span>
-    <span class="tagline">render routes · share links</span>
   </header>
 
   <main>
-    <!-- Upload section -->
+    <!-- Upload widget — always visible; compact when a result is shown -->
     <section id="upload-section">
       <div id="drop-zone" tabindex="0" role="button" aria-label="Upload GPX file">
         <div class="drop-inner">
@@ -24,7 +23,11 @@
         </div>
       </div>
       <div id="upload-error" class="error-msg" hidden></div>
+      <p class="upload-privacy">Your GPX file is never stored — only the rendered ASCII map and basic stats are saved when you share a link.</p>
     </section>
+
+    <!-- Separator — shown between upload widget and route result -->
+    <div id="section-sep" hidden></div>
 
     <!-- Loading indicator -->
     <section id="loading-section" hidden>
@@ -50,7 +53,7 @@
       <div class="action-bar">
         <button id="share-btn" class="btn">[ share link ]</button>
         <button id="replay-btn" class="btn">[ replay ]</button>
-        <button id="reset-btn" class="btn btn-dim">[ upload another ]</button>
+        <button id="reset-btn" class="btn btn-dim">[ upload new ]</button>
         <span id="share-feedback" class="feedback" hidden></span>
       </div>
     </section>
@@ -58,7 +61,6 @@
 
   <footer>
     <span>map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap</a> contributors · <a href="https://opentopomap.org" target="_blank" rel="noopener" style="color:inherit">OpenTopoMap</a></span>
-    <span class="footer-privacy">Your GPX file is never stored — only the rendered ASCII map and basic stats are saved when you share a link.</span>
   </footer>
 
   <script src="app.js"></script>
