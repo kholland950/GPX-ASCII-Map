@@ -35,15 +35,21 @@
 
     <!-- Result section -->
     <section id="result-section" hidden>
+      <div id="route-title" class="route-title"></div>
+
       <div id="stats-bar"></div>
+
       <div class="map-wrapper">
         <pre id="ascii-output"></pre>
       </div>
 
+      <pre id="elev-output" class="elev-output"></pre>
+
+      <p id="map-attribution" class="map-attribution">map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · <a href="https://opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a></p>
 
       <div class="action-bar">
         <button id="share-btn" class="btn">[ share link ]</button>
-        <button id="copy-art-btn" class="btn">[ copy ascii ]</button>
+        <button id="replay-btn" class="btn">[ replay ]</button>
         <button id="reset-btn" class="btn btn-dim">[ upload another ]</button>
         <span id="share-feedback" class="feedback" hidden></span>
       </div>
@@ -51,7 +57,8 @@
   </main>
 
   <footer>
-    <span>A: start | B: end | , land | % nature | ~ water | = road | # urban | map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap</a> contributors</span>
+    <span>map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap</a> contributors · <a href="https://opentopomap.org" target="_blank" rel="noopener" style="color:inherit">OpenTopoMap</a></span>
+    <span class="footer-privacy">Your GPX file is never stored — only the rendered ASCII map and basic stats are saved when you share a link.</span>
   </footer>
 
   <script src="app.js"></script>

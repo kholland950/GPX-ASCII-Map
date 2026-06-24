@@ -171,8 +171,8 @@ async function fetchTile(z, x, y) {
 	if (pendingTiles.has(key)) return pendingTiles.get(key);
 
 	const promise = (async () => {
-		const sub = "abcd"[(x + y) % 4];
-		const url = `https://${sub}.basemaps.cartocdn.com/light_nolabels/${z}/${x}/${y}.png`;
+		const sub = "abc"[(x + y) % 3];
+		const url = `https://${sub}.tile.opentopomap.org/${z}/${x}/${y}.png`;
 		const resp = await fetch(url, {
 			headers: { "User-Agent": "gpx-ascii-map/1.0" },
 			signal: AbortSignal.timeout(10000),
@@ -239,6 +239,10 @@ async function buildMapImage(minLat, minLon, maxLat, maxLon) {
 	const cropH = Math.max(1, cropY2 - cropY);
 	stitched.crop(cropX, cropY, cropW, cropH);
 
+	// Blur before classification to dissolve contour lines, road casings, and
+	// baked labels (all 1–3px wide) into surrounding terrain color.
+	stitched.blur(4);
+
 	return stitched;
 }
 
@@ -247,47 +251,50 @@ async function buildMapImage(minLat, minLon, maxLat, maxLon) {
 // ASCII chars indexed by 4-bit water mask: bit3=TL bit2=TR bit1=BL bit0=BR
 const WATER_BLOCKS = [
 	null,
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
-	"~",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
+	"=",
 	null,
 ];
 
-// Positron water ≈ RGB(159, 196, 203) — light blue-gray, g≈b both > r
+// OpenTopoMap water ≈ RGB(170, 211, 226) — clearly blue, b > g > r
 function isWater(r, g, b) {
-	const lum = (r + g + b) / 3;
-	return (
-		lum > 175 && lum < 240 && g >= r + 4 && b >= r + 4 && Math.abs(b - g) < 10
-	);
+	return b > r + 25 && b > g + 8 && g > r;
 }
 
-// CartoDB Positron No Labels color → ASCII char + terrain type
+// OpenTopoMap color → ASCII char + terrain type
+// Roads (white/warm-white surface + gray/orange casings) are intentionally
+// collapsed into land so they don't create noisy grid patterns at ASCII scale.
 function classifyPixel(r, g, b) {
-	if (isWater(r, g, b)) return ["~", "water"];
+	if (isWater(r, g, b)) return ["=", "water"];
 
-	// Nature / vegetation: green channel leads red and blue.
-	// Positron parks ≈ RGB(212, 234, 210) — g leads r by ~22, b by ~24.
-	// Use a low threshold (3/1) so park cells survive averaging with roads:
-	// even a cell that's 80% road still has a 3–5pt green lead on red.
-	if (g > r + 3 && g > b + 1) return ["%", "nature"];
+	// Lush vegetation: g strongly leads r and b (forest, meadow, park)
+	if (g > r + 20 && g > b + 20) return ["=", "nature"];
+
+	// Lighter vegetation: g moderate lead (grassland, scrub)
+	if (g > r + 8 && g > b + 8 && g > 155) return ["=", "nature"];
 
 	const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-	if (lum > 242) return ["/", "land"];
-	if (lum > 220) return ["/", "land"];
-	if (lum > 195) return ["-", "urban"];
-	if (lum > 165) return ["/", "urban"];
-	return ["#", "urban"];
+
+	// Alpine / rocky: neutral gray in mid-luminance range.
+	// Neutral = channels within ~12 of each other; excludes warm road casings.
+	const maxCh = Math.max(r, g, b);
+	const minCh = Math.min(r, g, b);
+	if (maxCh - minCh < 18 && lum > 120 && lum < 215) return ["=", "urban"];
+
+	// Everything else (arid land, roads, buildings, bare ground) → land
+	return ["=", "land"];
 }
 
 function imageToASCII(img, MAP_W, MAP_H) {
@@ -344,13 +351,15 @@ function imageToASCII(img, MAP_W, MAP_H) {
 				(wTL ? 1 : 0) + (wTR ? 1 : 0) + (wBL ? 1 : 0) + (wBR ? 1 : 0);
 
 			if (waterCount === 4) {
-				grid[row][col] = "~";
+				grid[row][col] = "=";
 				typeGrid[row][col] = "water";
-			} else if (waterCount > 0) {
+			} else if (waterCount >= 2) {
+				// Require at least half the cell to be water before marking it as
+				// water/coast — keeps rivers from bleeding into adjacent land cells.
 				const mask =
 					(wTL ? 8 : 0) | (wTR ? 4 : 0) | (wBL ? 2 : 0) | (wBR ? 1 : 0);
 				grid[row][col] = WATER_BLOCKS[mask];
-				typeGrid[row][col] = "coast";
+				typeGrid[row][col] = "water";
 			} else {
 				const [ar, ag, ab] = avgColor(x0, y0, x1, y1);
 				const [ch, type] = classifyPixel(ar, ag, ab);
@@ -494,8 +503,11 @@ function buildElevHTML(points, MAP_W, totalSteps, stepMs) {
 
 // ── ASCII Rendering ───────────────────────────────────────────────────────────
 
-const MAP_W = 120;
+const MAP_W = 200;
 const CHAR_ASPECT = 0.5; // char width / char height (Courier New @ line-height 1.2)
+// Fixed canvas height for a consistent 16:9 visual aspect ratio:
+//   visual_w / visual_h = (MAP_W × CHAR_ASPECT) / MAP_H = 16/9
+const MAP_H = Math.round((MAP_W * CHAR_ASPECT * 9) / 16); // ≈ 56
 
 async function renderASCII(points, name) {
 	let minLat = Infinity,
@@ -516,16 +528,30 @@ async function renderASCII(points, name) {
 	minLon -= lonPad;
 	maxLon += lonPad;
 
+	// Expand the bounding box so its geographic aspect ratio matches the fixed
+	// canvas. This ensures the route is always centred in a consistent frame
+	// rather than the frame changing shape per-route.
+	const midLat = (minLat + maxLat) / 2;
+	const cosLat = Math.cos((midLat * Math.PI) / 180);
+	const targetRatio = MAP_H / (MAP_W * CHAR_ASPECT); // latRange / effLonRange
+	const curLat = maxLat - minLat;
+	const curEffLon = (maxLon - minLon) * cosLat;
+	if (curLat / curEffLon > targetRatio) {
+		// Route is taller than canvas → expand longitude (pillarbox)
+		const need = curLat / targetRatio / cosLat;
+		const expand = (need - (maxLon - minLon)) / 2;
+		minLon -= expand;
+		maxLon += expand;
+	} else {
+		// Route is wider than canvas → expand latitude (letterbox)
+		const need = targetRatio * curEffLon;
+		const expand = (need - curLat) / 2;
+		minLat -= expand;
+		maxLat += expand;
+	}
+
 	const latRange = maxLat - minLat;
 	const lonRange = maxLon - minLon;
-	const midLat = (minLat + maxLat) / 2;
-
-	let MAP_H = Math.round(
-		(latRange / (lonRange * Math.cos((midLat * Math.PI) / 180))) *
-			MAP_W *
-			CHAR_ASPECT,
-	);
-	MAP_H = Math.max(18, Math.min(100, MAP_H));
 
 	// Fetch tile image and place names in parallel
 	const [img, placeNames] = await Promise.all([
@@ -613,8 +639,8 @@ async function renderASCII(points, name) {
 		points[points.length - 1].lat,
 		points[points.length - 1].lon,
 	);
-	writeStr(sy, sx - 1, "[A]", "marker");
-	writeStr(ey, ex - 1, "[B]", "marker");
+	writeStr(sy, sx - 1, "[+]", "marker");
+	writeStr(ey, ex - 1, "[+]", "marker");
 
 	// Compass rose
 	const cr = 1,
@@ -690,34 +716,31 @@ async function renderASCII(points, name) {
 	}
 
 	const mapLines = grid.map((row) => row.join(""));
-	const titleRaw = name ? `[ ${name} ]` : "[ GPX Route ]";
-	const titleHtml = name
-		? `<span class="bg">[ </span>${escapeHtml(name)}<span class="bg"> ]</span>`
-		: `<span class="bg">[ GPX Route ]</span>`;
-	const titlePadLen = Math.max(0, MAP_W - titleRaw.length);
 	const bg = (s) => `<span class="bg">${escapeHtml(s)}</span>`;
 
-	const rows = [];
-	rows.push(bg(`+${"-".repeat(MAP_W)}+`));
-	rows.push(bg("|") + titleHtml + bg(`${" ".repeat(titlePadLen)}|`));
+	// Map grid — border + rows only, no title or attribution embedded
+	const mapRows = [];
+	mapRows.push(bg(`+${"-".repeat(MAP_W)}+`));
 	for (let y = 0; y < MAP_H; y++) {
-		rows.push(bg("|") + rowToHtml(mapLines[y], typeGrid[y], riGrid[y], rvGrid[y]) + bg("|"));
+		mapRows.push(bg("|") + rowToHtml(mapLines[y], typeGrid[y], riGrid[y], rvGrid[y]) + bg("|"));
 	}
-	rows.push(bg(`+${"-".repeat(MAP_W)}+`));
+	mapRows.push(bg(`+${"-".repeat(MAP_W)}+`));
 
-	const elevRows = buildElevHTML(points, MAP_W, totalSteps, stepMs);
+	// Elevation profile — same width as map so fonts can be synced for equal visual width
+	const ELEV_W = MAP_W;
+	const elevRows = buildElevHTML(points, ELEV_W, totalSteps, stepMs);
+	let elevHtml = null;
 	if (elevRows) {
-		const elevLabel = " elevation profile";
-		rows.push(
-			bg("|") + bg(elevLabel) + bg(`${" ".repeat(MAP_W - elevLabel.length)}|`),
-		);
-		for (const r of elevRows) rows.push(`${bg("|")}${r}${bg("|")}`);
-		rows.push(bg(`+${"-".repeat(MAP_W)}+`));
+		const er = [];
+		for (const r of elevRows) er.push(r);
+		elevHtml = er.join("\n");
 	}
 
-	rows.push(bg(" map © OpenStreetMap contributors · CartoDB"));
-
-	return rows.join("\n");
+	return {
+		mapHtml: mapRows.join("\n"),
+		elevHtml,
+		routeName: name || "GPX Route",
+	};
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -745,14 +768,16 @@ app.post("/api/upload", upload.single("gpx"), async (req, res) => {
 			maxLon: Math.max(...points.map((p) => p.lon)),
 		};
 
-		const ascii = await renderASCII(points, name);
+		const rendered = await renderASCII(points, name);
 
 		const id = uuidv4().replace(/-/g, "").slice(0, 10);
 
 		const shareData = {
 			id,
 			name,
-			ascii,
+			mapHtml: rendered.mapHtml,
+			elevHtml: rendered.elevHtml,
+			routeName: rendered.routeName,
 			format: "html",
 			stats: {
 				...stats,

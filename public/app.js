@@ -7,9 +7,13 @@
   const dropZone       = $('drop-zone');
   const fileInput      = $('file-input');
   const asciiOutput    = $('ascii-output');
+  const elevOutput     = $('elev-output');
+  const routeTitle     = $('route-title');
+  const mapAttribution = $('map-attribution');
   const statsBar       = $('stats-bar');
+  const actionBar      = document.querySelector('.action-bar');
   const shareBtn       = $('share-btn');
-  const copyArtBtn     = $('copy-art-btn');
+  const replayBtn      = $('replay-btn');
   const resetBtn       = $('reset-btn');
   const shareFeedback  = $('share-feedback');
   const uploadError    = $('upload-error');
@@ -46,18 +50,88 @@
     statsBar.innerHTML = parts.join('');
   }
 
+  // ── Map font scaling ───────────────────────────────────────────
+
+  // Reserve ~120px for elevation + attribution below the map
+  const ELEV_RESERVED = 120;
+
+  function fitMap() {
+    const lineCount = asciiOutput.textContent.split('\n').length;
+    if (lineCount < 5) return;
+
+    const header = document.querySelector('header');
+    const reserved = header.getBoundingClientRect().height + 32 + ELEV_RESERVED;
+    const availH = window.innerHeight - reserved;
+
+    // First pass: size to fill available height
+    let size = Math.max(5, Math.min(13, availH / (lineCount * 1.2)));
+    asciiOutput.style.fontSize = `${size.toFixed(2)}px`;
+
+    // Second pass: if the map overflows horizontally, scale down to fit width too
+    const wrapper = asciiOutput.closest('.map-wrapper');
+    if (wrapper && asciiOutput.scrollWidth > wrapper.clientWidth) {
+      size = Math.max(5, size * (wrapper.clientWidth / asciiOutput.scrollWidth));
+      asciiOutput.style.fontSize = `${size.toFixed(2)}px`;
+    }
+
+    // Keep elevation profile at same font-size so it matches the map width exactly
+    elevOutput.style.fontSize = asciiOutput.style.fontSize;
+
+    // Constrain stats bar and action bar to the same pixel width as the rendered map
+    const mapW = `${asciiOutput.offsetWidth}px`;
+    statsBar.style.width = mapW;
+    actionBar.style.width = mapW;
+  }
+
+  window.addEventListener('resize', fitMap);
+
   // ── Result display ─────────────────────────────────────────────
 
   function displayResult(data) {
     currentShareId = data.id;
     renderStats({ ...data.stats, pointCount: data.pointCount });
-    if (data.format === 'html') {
+
+    if (data.mapHtml) {
+      // Pre-size to the known fixed map dimensions (MAP_H=56 + 2 borders = 58 lines)
+      // so font-size is correct on the first paint and animations never see a resize.
+      const KNOWN_LINES = 58;
+      const hdr = document.querySelector('header');
+      const reserved = hdr.getBoundingClientRect().height + 32 + ELEV_RESERVED;
+      const availH = window.innerHeight - reserved;
+      const preSize = Math.max(5, Math.min(13, availH / (KNOWN_LINES * 1.2)));
+      asciiOutput.style.fontSize = `${preSize.toFixed(2)}px`;
+      elevOutput.style.fontSize = `${preSize.toFixed(2)}px`;
+
+      // Delay all CSS animations until after the smooth scroll finishes (~600ms).
+      resultSection.style.setProperty('--scroll-offset', '650ms');
+
+      // New structured format
+      asciiOutput.innerHTML = data.mapHtml;
+      routeTitle.textContent = data.routeName || '';
+      routeTitle.hidden = !data.routeName;
+      if (data.elevHtml) {
+        elevOutput.innerHTML = data.elevHtml;
+        elevOutput.hidden = false;
+      } else {
+        elevOutput.hidden = true;
+      }
+      mapAttribution.hidden = false;
+    } else if (data.format === 'html') {
+      // Legacy format — single pre blob
       asciiOutput.innerHTML = data.ascii;
+      routeTitle.hidden = true;
+      elevOutput.hidden = true;
+      mapAttribution.hidden = true;
     } else {
       asciiOutput.textContent = data.ascii;
+      routeTitle.hidden = true;
+      elevOutput.hidden = true;
+      mapAttribution.hidden = true;
     }
+
     showSection('result');
     history.replaceState({}, '', `?s=${data.id}`);
+    fitMap();
     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -107,6 +181,18 @@
     if (file) uploadFile(file);
   });
 
+  // ── Replay button ──────────────────────────────────────────────
+
+  replayBtn.addEventListener('click', () => {
+    // No scroll this time — start immediately
+    resultSection.style.setProperty('--scroll-offset', '0ms');
+    asciiOutput.classList.add('no-animate');
+    elevOutput.classList.add('no-animate');
+    void asciiOutput.offsetWidth; // flush so browser sees animation: none
+    asciiOutput.classList.remove('no-animate');
+    elevOutput.classList.remove('no-animate');
+  });
+
   // ── Share button ───────────────────────────────────────────────
 
   shareBtn.addEventListener('click', async () => {
@@ -120,19 +206,14 @@
     }
   });
 
-  copyArtBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(asciiOutput.textContent);
-      showFeedback('ascii art copied!');
-    } catch {
-      showFeedback('select the map above and copy manually');
-    }
-  });
-
   resetBtn.addEventListener('click', () => {
     currentShareId = null;
     fileInput.value = '';
     asciiOutput.textContent = '';
+    elevOutput.innerHTML = '';
+    elevOutput.hidden = true;
+    routeTitle.textContent = '';
+    routeTitle.hidden = true;
     statsBar.innerHTML = '';
     clearError();
     history.replaceState({}, '', location.pathname);
